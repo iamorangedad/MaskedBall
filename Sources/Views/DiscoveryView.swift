@@ -5,6 +5,7 @@ struct DiscoveryView: View {
     @State private var selectedPersonality: BotPersonality?
     @State private var bots: [BotProfile] = []
     @State private var isLoading = false
+    @State private var errorMessage: String?
     
     var filteredBots: [BotProfile] {
         var result = bots
@@ -30,6 +31,9 @@ struct DiscoveryView: View {
             Section {
                 TextField("Search by name, keywords...", text: $searchText)
                     .textFieldStyle(.roundedBorder)
+                    .onSubmit {
+                        searchBots()
+                    }
             }
             
             Section("Filter by Personality") {
@@ -61,6 +65,9 @@ struct DiscoveryView: View {
                         ProgressView()
                         Spacer()
                     }
+                } else if let error = errorMessage {
+                    Text(error)
+                        .foregroundStyle(.red)
                 } else if filteredBots.isEmpty {
                     Text("No bots found")
                         .foregroundStyle(.secondary)
@@ -83,12 +90,67 @@ struct DiscoveryView: View {
         }
         .navigationTitle("Discover")
         .onAppear {
+            loadBots()
+        }
+        .refreshable {
+            await loadBotsAsync()
+        }
+    }
+    
+    private func loadBots() {
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                let apiBots = try await APIService.shared.getAllBots()
+                bots = apiBots.map { $0.toBotProfile() }
+            } catch {
+                loadSampleBots()
+            }
+            isLoading = false
+        }
+    }
+    
+    private func loadBotsAsync() async {
+        do {
+            let apiBots = try await APIService.shared.getAllBots()
+            bots = apiBots.map { $0.toBotProfile() }
+        } catch {
             loadSampleBots()
         }
     }
     
+    private func searchBots() {
+        guard !searchText.isEmpty else {
+            loadBots()
+            return
+        }
+        
+        isLoading = true
+        
+        Task {
+            do {
+                let apiBots = try await APIService.shared.searchBots(query: searchText)
+                bots = apiBots.map { $0.toBotProfile() }
+            } catch {
+                let query = searchText.lowercased()
+                bots = sampleBots.filter { bot in
+                    bot.name.lowercased().contains(query) ||
+                    bot.bio.lowercased().contains(query) ||
+                    bot.keywords.contains { $0.lowercased().contains(query) }
+                }
+            }
+            isLoading = false
+        }
+    }
+    
     private func loadSampleBots() {
-        bots = [
+        bots = sampleBots
+    }
+    
+    private var sampleBots: [BotProfile] {
+        [
             BotProfile(
                 name: "AI Writer",
                 personality: .creative,
@@ -140,72 +202,6 @@ struct DiscoveryView: View {
                 chatCount: 890
             )
         ]
-    }
-}
-
-struct FilterChip: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.caption)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(isSelected ? Color.purple : Color.gray.opacity(0.2))
-                .foregroundStyle(isSelected ? .white : .primary)
-                .clipShape(Capsule())
-        }
-    }
-}
-
-struct BotCardView: View {
-    let bot: BotProfile
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(bot.name)
-                    .font(.headline)
-                
-                Spacer()
-                
-                Text(bot.personality.rawValue)
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.purple.opacity(0.2))
-                    .clipShape(Capsule())
-            }
-            
-            if !bot.bio.isEmpty {
-                Text(bot.bio)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            
-            if !bot.keywords.isEmpty {
-                HStack(spacing: 4) {
-                    ForEach(bot.keywords.prefix(3), id: \.self) { keyword in
-                        Text("#\(keyword)")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    }
-                }
-            }
-            
-            HStack {
-                Label("\(bot.viewCount)", systemImage: "eye")
-                Spacer()
-                Label("\(bot.chatCount)", systemImage: "bubble.left")
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 4)
     }
 }
 
