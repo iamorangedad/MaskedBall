@@ -70,8 +70,8 @@
 ### Phase 1: 基础框架 (2周)
 - [x] 创建项目文档
 - [x] Xcode项目搭建 + SwiftUI基础界面
-- [ ] MLX Swift 集成 + 模型加载测试
-- [ ] Gemma 2B 模型下载与推理验证
+- [x] MLX Swift 集成 + 模型加载测试
+- [x] Gemma 2B 模型下载与推理验证
 - [x] 本地数据持久化 (UserDefaults)
 
 ### Phase 2: 机器人配置 (1.5周)
