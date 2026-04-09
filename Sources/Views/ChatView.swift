@@ -2,22 +2,20 @@ import SwiftUI
 
 struct ChatView: View {
     let bot: BotProfile
-    @State private var messages: [ChatMessage] = []
+    @StateObject private var viewModel = ChatViewModel()
     @State private var inputText = ""
-    @State private var isLoading = false
-    @Environment(\.dismiss) var dismiss
     
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 12) {
-                        ForEach(messages) { message in
+                        ForEach(viewModel.messages) { message in
                             ChatBubbleView(message: message)
                                 .id(message.id)
                         }
                         
-                        if isLoading {
+                        if viewModel.isLoading {
                             HStack(spacing: 8) {
                                 ProgressView()
                                 Text("Thinking...")
@@ -29,8 +27,8 @@ struct ChatView: View {
                     }
                     .padding()
                 }
-                .onChange(of: messages.count) { _, _ in
-                    if let last = messages.last {
+                .onChange(of: viewModel.messages.count) { _, _ in
+                    if let last = viewModel.messages.last {
                         withAnimation {
                             proxy.scrollTo(last.id, anchor: .bottom)
                         }
@@ -40,7 +38,7 @@ struct ChatView: View {
             
             Divider()
             
-            ChatInputView(text: $inputText, isLoading: isLoading) {
+            ChatInputView(text: $inputText, isLoading: viewModel.isLoading) {
                 sendMessage()
             }
         }
@@ -54,94 +52,20 @@ struct ChatView: View {
             }
         }
         .onAppear {
-            loadGreeting()
+            viewModel.configure(with: bot)
+            viewModel.loadGreeting()
         }
-    }
-    
-    private func loadGreeting() {
-        messages.append(ChatMessage(
-            content: bot.greeting,
-            sender: .bot(bot.id),
-            timestamp: Date()
-        ))
     }
     
     private func sendMessage() {
         guard !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         
-        let userMessage = ChatMessage(
-            content: inputText,
-            sender: .user,
-            timestamp: Date()
-        )
-        messages.append(userMessage)
-        
+        viewModel.sendMessage(inputText)
         inputText = ""
-        isLoading = true
-        
-        Task {
-            try? await Task.sleep(nanoseconds: 1_500_000_000)
-            
-            let response = generateBotResponse(to: userMessage.content)
-            
-            await MainActor.run {
-                messages.append(ChatMessage(
-                    content: response,
-                    sender: .bot(bot.id),
-                    timestamp: Date()
-                ))
-                isLoading = false
-            }
-        }
-    }
-    
-    private func generateBotResponse(to input: String) -> String {
-        let lowercaseInput = input.lowercased()
-        
-        switch bot.personality {
-        case .friendly:
-            if lowercaseInput.contains("help") {
-                return "Of course! I'm happy to help you with anything I can. What do you need?"
-            }
-            return "That's interesting! Tell me more about that. I'm always eager to learn and chat!"
-            
-        case .humorous:
-            return "Ha! That's a good one! 😄 You really know how to keep things fun!"
-            
-        case .mysterious:
-            return "The shadows whisper of your curiosity... But perhaps some things are better left unsaid."
-            
-        case .academic:
-            return "That's a fascinating topic. Let me share some insights based on my knowledge..."
-            
-        case .creative:
-            return "Your words paint such interesting pictures! Let me create something in response..."
-            
-        case .supportive:
-            return "I hear you. It's okay to feel that way. I'm here for you. 💙"
-        }
     }
     
     private func showBotInfo() {
-        // Show bot profile info sheet
     }
-}
-
-struct ChatMessage: Identifiable {
-    let id = UUID()
-    let content: String
-    let sender: MessageSender
-    let timestamp: Date
-    
-    var isFromBot: Bool {
-        if case .bot = sender { return true }
-        return false
-    }
-}
-
-enum MessageSender: Codable {
-    case user
-    case bot(UUID)
 }
 
 struct ChatBubbleView: View {
