@@ -81,13 +81,13 @@
 - [x] 配置预览与测试聊天
 
 ### Phase 3: 后端服务 (2周)
-- [ ] Vapor API 服务搭建
-- [ ] 用户注册/认证 (JWT)
-- [ ] 用户画像CRUD API
-- [ ] WebSocket Gateway 实现
+- [x] Vapor API 服务搭建
+- [x] 用户注册/认证 (JWT)
+- [x] 用户画像CRUD API
+- [x] WebSocket Gateway 实现
 
 ### Phase 4: 实时聊天 (1.5周)
-- [ ] WebSocket 连接管理
+- [x] WebSocket 连接管理
 - [ ] 实时消息收发
 - [ ] 聊天记录同步
 - [ ] 离线消息处理
