@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>假面舞会</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23161012' stroke='%23d7b56d' stroke-width='2'/%3E%3Cpath d='M8 15h16M10 13.5c1.2 1.4 2.4 1.4 3.6 0M18.4 13.5c1.2 1.4 2.4 1.4 3.6 0' stroke='%23d7b56d' stroke-width='1.4' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <div>
+          <strong>假面舞会</strong>
+          <small>每个人是空间里的一个节点</small>
+        </div>
+      </div>
+      <label class="search">
+        <span class="sr">寻找节点</span>
+        <input id="search" type="search" placeholder="按名字或兴趣寻找" autocomplete="off">
+      </label>
+      <div class="top-actions">
+        <p id="link-count" class="link-count">还没有连线</p>
+        <button id="open-settings" class="ghost" type="button">画像设置</button>
+      </div>
+    </header>
+
+    <div class="stage">
+      <canvas id="space" aria-label="用户空间"></canvas>
+      <p class="hint">拖动空白处移动视野，滚轮缩放。点一个节点开始交谈，交谈之后你们之间会出现连线。</p>
+      <aside id="dock" class="dock" aria-live="polite">
+        <div id="dock-empty" class="dock-empty">
+          <p class="eyebrow">空间</p>
+          <h2>先选一个节点</h2>
+          <p>所有人都在这里。你和谁说过话，两个人之间就会留下一条线。</p>
+        </div>
+        <div id="dock-chat" class="dock-chat" hidden></div>
+      </aside>
+    </div>
+  </div>
+
+  <div id="gate" class="gate" hidden>
+    <form id="gate-form" class="gate-card">
+      <p class="eyebrow">Masked Ball</p>
+      <h1>走进这个空间</h1>
+      <p>不用安装应用。你留下的画像，会在你选择让模型代聊时，成为说话的上下文。</p>
+      <label>
+        你在这里的名字
+        <input id="gate-name" name="name" maxlength="20" placeholder="例如：北岛" required>
+      </label>
+      <button type="submit">进入舞会</button>
+    </form>
+  </div>
+
+  <div id="settings" class="sheet" hidden>
+    <form id="settings-form" class="sheet-card">
+      <div class="sheet-head">
+        <div>
+          <p class="eyebrow">系统设置</p>
+          <h2>用户画像</h2>
+        </div>
+        <button id="close-settings" class="ghost" type="button">关闭</button>
+      </div>
+      <p class="sheet-lead">这份画像是你和别人聊天时的上下文。选择「画像代聊」时，本地模型会按它来替你说话；你也可以随时改成亲手回复。</p>
+      <label>名字<input id="profile-name" name="name" maxlength="20" required></label>
+      <div class="split">
+        <label>性格
+          <select id="profile-personality" name="personality"></select>
+        </label>
+        <label>语言风格
+          <select id="profile-style" name="languageStyle"></select>
+        </label>
+      </div>
+      <label>背景
+        <textarea id="profile-bio" name="bio" rows="4" maxlength="600" placeholder="你是谁，在意什么，说话时会不会绕开某些事"></textarea>
+      </label>
+      <label>兴趣，用逗号分开
+        <input id="profile-keywords" name="keywords" maxlength="120" placeholder="夜色, 旧书, 散步">
+      </label>
+      <label>开场
+        <input id="profile-greeting" name="greeting" maxlength="160" placeholder="你通常怎样开口">
+      </label>
+      <fieldset>
+        <legend>默认由谁说话</legend>
+        <label class="choice"><input type="radio" name="assistMode" value="human" checked> 亲手回复</label>
+        <label class="choice"><input type="radio" name="assistMode" value="llm"> 画像代聊</label>
+      </fieldset>
+      <p id="settings-error" class="form-error" hidden></p>
+      <div class="sheet-actions">
+        <button type="submit">保存画像</button>
+        <span id="settings-note" class="muted"></span>
+      </div>
+    </form>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
