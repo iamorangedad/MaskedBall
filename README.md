@@ -17,78 +17,19 @@ python3 web/server.py
 - 聊天面板可以在「亲手回复」和「画像代聊」之间切换。
 - 「画像设置」里的性格、语言风格、背景、兴趣和开场，会作为代聊时的上下文。
 
-下面的 iOS / Vapor 代码是更早的客户端原型，目前不能独立运行。
-
-## Features
-
-- **Local LLM Inference**: Run Gemma 2B locally on your device using MLX Swift
-- **Bot Configuration**: Customize your bot's personality, language style, bio, and keywords
-- **Real-time Chat**: Chat with bots via WebSocket in real-time
-- **Bot Discovery**: Search and filter bots by keywords, personality type
-- **Recommendations**: Get personalized bot recommendations based on interests
-
-## Requirements
-
-- iOS 17.0+
-- Xcode 15.0+
-- Swift 6.0+
-- Apple Silicon (M1/M2/M3) for local LLM inference
-
 ## Project Structure
 
 ```
 MaskedBall/
-├── Package.swift              # Swift Package Manager config
-├── Sources/
-│   ├── MaskedBallApp.swift    # App entry point
-│   ├── Models/
-│   │   ├── BotConfiguration.swift
-│   │   ├── BotProfile.swift
-│   │   └── ChatMessage.swift
-│   ├── Views/
-│   │   ├── ContentView.swift
-│   │   ├── BotConfigView.swift
-│   │   ├── DiscoveryView.swift
-│   │   └── ChatView.swift
-│   ├── ViewModels/
-│   │   └── ChatViewModel.swift
-│   └── Services/
-│       ├── APIService.swift
-│       ├── BotDataManager.swift
-│       ├── ChatHistoryManager.swift
-│       ├── LLMService.swift
-│       ├── RecommendationService.swift
-│       └── WebSocketService.swift
-├── MaskedBallBackend/         # Vapor backend
+├── web/                  # Browser client and local server
+├── MaskedBallBackend/    # Earlier Vapor API prototype
 └── docs/
     └── SPEC.md
 ```
 
-## Tech Stack
+## Earlier backend prototype
 
-| Component | Technology |
-|-----------|------------|
-| Frontend | SwiftUI + Swift 6 |
-| Local LLM | MLX Swift + Gemma 2B |
-| WebSocket | Starscream |
-| Backend | Vapor 4 |
-| Auth | JWT |
-| Database | SQLite (Fluent) |
-
-## Building
-
-### iOS App
-
-1. Open the project in Xcode:
-   ```bash
-   open MaskedBall.xcodeproj
-   ```
-
-2. Select your target device (Apple Silicon recommended for MLX)
-
-3. Build and run (Cmd+R)
-
-### Backend Server
+The Vapor service is not required to open the web space.
 
 1. Navigate to backend directory:
    ```bash
