@@ -4,7 +4,6 @@
 
 ## 在浏览器里打开
 
-不需要 Xcode，也不需要 iPhone。本机已有 Python 3 和 Ollama（`qwen3:4b`）即可。
 
 ```bash
 python3 web/server.py
@@ -52,14 +51,6 @@ Your bot's system prompt is generated from:
 - Interest keywords
 - Custom greeting message
 
-## Development Phases
-
-- [x] Phase 1: Basic Framework
-- [x] Phase 2: Bot Configuration
-- [x] Phase 3: Backend Services
-- [x] Phase 4: Real-time Chat
-- [x] Phase 5: Bot Discovery
-- [ ] Phase 6: Testing & Optimization
 
 ## License
 
