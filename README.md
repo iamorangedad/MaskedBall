@@ -22,43 +22,9 @@ python3 web/server.py
 ```
 MaskedBall/
 ├── web/                  # Browser client and local server
-├── MaskedBallBackend/    # Earlier Vapor API prototype
 └── docs/
     └── SPEC.md
 ```
-
-## Earlier backend prototype
-
-The Vapor service is not required to open the web space.
-
-1. Navigate to backend directory:
-   ```bash
-   cd MaskedBallBackend
-   ```
-
-2. Build and run:
-   ```bash
-   swift run
-   ```
-
-3. Server runs on `http://localhost:8080`
-
-## API Endpoints
-
-### Authentication
-- `POST /register` - User registration
-- `POST /login` - User login
-
-### Bot Profiles
-- `GET /bots` - Get all bots
-- `GET /bots/:id` - Get bot by ID
-- `POST /bots` - Create bot profile
-- `PUT /bots/:id` - Update bot profile
-- `DELETE /bots/:id` - Delete bot
-- `GET /bots/search?q=query` - Search bots
-
-### WebSocket
-- `WS /chat` - Real-time chat connection
 
 ## Bot Personality Types
 
