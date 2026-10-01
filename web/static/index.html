@@ -24,6 +24,7 @@
       <div class="top-actions">
         <p id="link-count" class="link-count">还没有连线</p>
         <button id="open-settings" class="ghost" type="button">画像设置</button>
+        <button id="logout" class="ghost" type="button" hidden>退出</button>
       </div>
     </header>
 
@@ -44,18 +45,36 @@
   <div id="gate" class="gate" hidden>
     <form id="gate-form" class="gate-card">
       <p class="eyebrow">Masked Ball</p>
-      <h1>走进这个空间</h1>
-      <p>不用安装应用。你留下的画像，会在你选择让模型代聊时，成为说话的上下文。</p>
-      <label>
-        你在这里的名字
-        <input id="gate-name" name="name" maxlength="20" placeholder="例如：北岛" required>
+      <h1 id="gate-title">登录</h1>
+      <p id="gate-lead">注册之后，聊天记录记在你的账号下。背景只给你自己和代聊使用。</p>
+      <div class="modes" id="gate-modes">
+        <button type="button" data-auth="login">登录</button>
+        <button type="button" data-auth="register">注册</button>
+      </div>
+      <label id="field-name" hidden>名字
+        <input id="gate-name" maxlength="20" placeholder="例如：北岛" autocomplete="nickname">
       </label>
-      <button type="submit">进入舞会</button>
+      <label>邮箱
+        <input id="gate-email" type="email" maxlength="120" autocomplete="username" required>
+      </label>
+      <label id="field-password">密码
+        <input id="gate-password" type="password" minlength="8" maxlength="200" autocomplete="current-password" required>
+      </label>
+      <label id="field-code" hidden>重置码
+        <input id="gate-code" maxlength="32" autocomplete="one-time-code">
+      </label>
+      <p id="gate-error" class="form-error" hidden></p>
+      <p id="gate-note" class="muted"></p>
+      <div class="sheet-actions">
+        <button type="submit" id="gate-submit">登录</button>
+        <button type="button" id="gate-forgot" class="ghost">忘记密码</button>
+      </div>
     </form>
   </div>
 
   <div id="settings" class="sheet" hidden>
-    <form id="settings-form" class="sheet-card">
+    <div class="sheet-card">
+    <form id="settings-form">
       <div class="sheet-head">
         <div>
           <p class="eyebrow">系统设置</p>
@@ -63,7 +82,8 @@
         </div>
         <button id="close-settings" class="ghost" type="button">关闭</button>
       </div>
-      <p class="sheet-lead">这份画像是你和别人聊天时的上下文。选择「画像代聊」时，本地模型会按它来替你说话；你也可以随时改成亲手回复。</p>
+      <p class="sheet-lead">背景只有你自己看得到，代聊时会当作上下文。别人的名片上只有名字、性格、兴趣和开场。</p>
+      <p id="profile-email" class="muted"></p>
       <label>名字<input id="profile-name" name="name" maxlength="20" required></label>
       <div class="split">
         <label>性格
@@ -93,6 +113,16 @@
         <span id="settings-note" class="muted"></span>
       </div>
     </form>
+      <h3>密码</h3>
+      <form id="password-form">
+        <label>当前密码<input id="password-current" type="password" autocomplete="current-password" required></label>
+        <label>新密码<input id="password-next" type="password" minlength="8" autocomplete="new-password" required></label>
+        <p id="password-error" class="form-error" hidden></p>
+        <button type="submit">更换密码</button>
+      </form>
+      <h3>拉黑</h3>
+      <div id="blocked-list" class="blocked-list"></div>
+    </div>
   </div>
 
   <script src="/app.js"></script>

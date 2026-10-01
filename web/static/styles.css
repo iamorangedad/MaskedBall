@@ -186,6 +186,10 @@ label { display: grid; gap: 6px; margin: 12px 0; color: var(--muted); font-size:
 fieldset { border: 1px solid var(--line); border-radius: 16px; margin: 8px 0 12px; }
 .choice { display: flex; align-items: center; gap: 8px; }
 .choice input { width: auto; }
+.gate-card { max-height: min(860px, 100%); overflow: auto; }
+.blocked-list { display: grid; gap: 8px; margin-bottom: 12px; }
+.blocked-list div, .row-actions { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+h3 { font-family: var(--serif); font-size: 1.15rem; margin: 18px 0 0; }
 
 @media (max-width: 860px) {
   .topbar { grid-template-columns: 1fr auto; }

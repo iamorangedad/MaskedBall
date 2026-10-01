@@ -1,0 +1,23 @@
+[Unit]
+Description=MaskedBall web space
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jetson/MaskedBall
+ExecStart=/usr/bin/python3 /home/jetson/MaskedBall/web/server.py
+Restart=on-failure
+RestartSec=3
+Environment=MASKEDBALL_HOST=0.0.0.0
+Environment=MASKEDBALL_PORT=8787
+# Environment=MASKEDBALL_TLS_CERT=/etc/maskedball/fullchain.pem
+# Environment=MASKEDBALL_TLS_KEY=/etc/maskedball/privkey.pem
+# Environment=MASKEDBALL_SMTP_HOST=smtp.example.com
+# Environment=MASKEDBALL_SMTP_PORT=587
+# Environment=MASKEDBALL_SMTP_USER=
+# Environment=MASKEDBALL_SMTP_PASSWORD=
+# Environment=MASKEDBALL_SMTP_FROM=maskedball@example.com
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,4 @@
+web/data/
+web/__pycache__/
+__pycache__/
+*.pyc

@@ -8,6 +8,8 @@ const state = {
   messages: [],
   sending: false,
   notice: "",
+  authMode: "login",
+  events: null,
   nodes: new Map(),
   camera: { x: 0, y: 0, k: 1 },
   drag: null,
@@ -40,6 +42,9 @@ async function api(path, options = {}) {
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
   const data = await response.json().catch(() => ({}));
+  if (response.status === 401 && !["/api/login", "/api/register", "/api/password/forgot", "/api/password/reset"].includes(path)) {
+    showGate();
+  }
   if (!response.ok) throw new Error(data.error || "请求没有完成");
   return data;
 }
@@ -128,7 +133,7 @@ function visibleUsers() {
   const query = state.query.trim().toLowerCase();
   if (!query) return state.users;
   return state.users.filter((user) => {
-    const blob = [user.name, user.bio, ...(user.keywords || [])].join(" ").toLowerCase();
+    const blob = [user.name, user.greeting, ...(user.keywords || [])].join(" ").toLowerCase();
     return blob.includes(query);
   });
 }
@@ -234,6 +239,18 @@ function draw() {
       ctx.fillStyle = color;
       ctx.fill();
     }
+    if (user.online) {
+      ctx.beginPath();
+      ctx.arc(node.x - 14, node.y - 14, 4, 0, Math.PI * 2);
+      ctx.fillStyle = "#8fbfa4";
+      ctx.fill();
+    }
+    if (user.unread) {
+      ctx.font = "12px 'Noto Sans CJK SC', sans-serif";
+      ctx.fillStyle = "#e0c17a";
+      ctx.textAlign = "left";
+      ctx.fillText(String(user.unread), node.x + 16, node.y + 8);
+    }
     ctx.fillStyle = "#f6efe4";
     ctx.font = "16px 'Noto Serif CJK SC', serif";
     ctx.textAlign = "center";
@@ -269,7 +286,10 @@ function linkCountForMe() {
 
 function renderChrome() {
   const count = linkCountForMe();
-  $("#link-count").textContent = count ? `你已和 ${count} 个人连线` : "你还没有连线";
+  const unread = state.users.reduce((sum, user) => sum + (user.unread || 0), 0);
+  const links = count ? `你已和 ${count} 个人连线` : "你还没有连线";
+  $("#link-count").textContent = unread ? `${links} · ${unread} 条未读` : links;
+  $("#logout").hidden = !state.me;
 }
 
 function renderDock() {
@@ -302,7 +322,8 @@ function renderDock() {
   name.textContent = user.name;
   const meta = document.createElement("p");
   meta.className = "meta";
-  meta.textContent = `${user.personalityLabel} · ${user.styleLabel.split("，")[0]} · ${user.assistMode === "llm" ? "画像会代为回复" : "等待亲手回复"}`;
+  const presenceText = user.online ? "在线" : "离开";
+  meta.textContent = `${user.personalityLabel} · ${user.styleLabel.split("，")[0]} · ${user.assistMode === "llm" ? "画像会代为回复" : "等待亲手回复"} · ${presenceText}`;
   title.append(name, meta);
   top.append(avatar, title);
   const keywords = document.createElement("div");
@@ -312,13 +333,33 @@ function renderDock() {
     chip.textContent = keyword;
     keywords.append(chip);
   }
-  const bio = document.createElement("p");
-  bio.className = "meta";
-  bio.textContent = user.bio || "这个人还没有写背景。";
   const greeting = document.createElement("p");
   greeting.className = "greeting";
   greeting.textContent = user.greeting ? `“${user.greeting}”` : "";
-  profile.append(top, keywords, bio, greeting);
+  const actions = document.createElement("div");
+  actions.className = "row-actions";
+  const blockBtn = document.createElement("button");
+  blockBtn.type = "button";
+  blockBtn.className = "ghost";
+  blockBtn.textContent = "拉黑";
+  blockBtn.addEventListener("click", async () => {
+    await api("/api/blocks", { method: "POST", body: { targetId: user.id } });
+    state.selectedId = null;
+    await refresh();
+  });
+  const reportBtn = document.createElement("button");
+  reportBtn.type = "button";
+  reportBtn.className = "ghost";
+  reportBtn.textContent = "举报";
+  reportBtn.addEventListener("click", async () => {
+    const reason = window.prompt("说明要报告的问题");
+    if (!reason) return;
+    await api("/api/reports", { method: "POST", body: { targetId: user.id, reason } });
+    state.notice = "已收到报告";
+    renderDock();
+  });
+  actions.append(blockBtn, reportBtn);
+  profile.append(top, keywords, greeting, actions);
 
   const thread = document.createElement("div");
   thread.className = "thread";
@@ -449,6 +490,8 @@ async function openChat(user) {
     const data = await api(`/api/chat/${user.id}`);
     if (state.selectedId !== user.id) return;
     state.messages = data.messages;
+    user.unread = 0;
+    renderChrome();
     renderDock();
   } catch (err) {
     state.notice = err.message;
@@ -469,7 +512,9 @@ function fillSelect(select, options, selected) {
 
 function openSettings() {
   if (!state.me || !state.catalog) return;
+  $("#profile-email").textContent = state.me.email || "";
   $("#profile-name").value = state.me.name;
+  renderBlocked();
   fillSelect($("#profile-personality"), state.catalog.personalities, state.me.personality);
   fillSelect($("#profile-style"), state.catalog.styles, state.me.languageStyle);
   $("#profile-bio").value = state.me.bio;
@@ -481,16 +526,9 @@ function openSettings() {
   settings.hidden = false;
 }
 
-async function refresh() {
+async function refresh(options) {
   const data = await api("/api/space");
-  state.me = data.me;
-  state.users = data.users;
-  state.edges = data.edges;
-  state.catalog = data.catalog;
-  syncNodes();
-  renderChrome();
-  renderDock();
-  wake();
+  applySnapshot(data, options);
   return data;
 }
 
@@ -553,14 +591,157 @@ $("#search").addEventListener("input", (event) => {
   draw();
 });
 
+function renderBlocked() {
+  const box = $("#blocked-list");
+  box.replaceChildren();
+  const people = (state.me && state.me.blocked) || [];
+  if (!people.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "没有拉黑的人";
+    box.append(empty);
+    return;
+  }
+  for (const person of people) {
+    const row = document.createElement("div");
+    const name = document.createElement("span");
+    name.textContent = person.name;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ghost";
+    button.textContent = "解除";
+    button.addEventListener("click", async () => {
+      applySnapshot(await api(`/api/blocks/${person.id}`, { method: "DELETE" }));
+      renderBlocked();
+    });
+    row.append(name, button);
+    box.append(row);
+  }
+}
+
+function applySnapshot(data, options = {}) {
+  state.me = data.me;
+  state.users = data.users;
+  state.edges = data.edges;
+  state.catalog = data.catalog;
+  syncNodes();
+  renderChrome();
+  if (!options.quiet && !state.sending) renderDock();
+  wake();
+}
+
+function showGate() {
+  state.me = null;
+  if (state.events) {
+    state.events.close();
+    state.events = null;
+  }
+  gate.hidden = false;
+  settings.hidden = true;
+  setAuthMode("login");
+  renderChrome();
+}
+
+function setAuthMode(mode) {
+  state.authMode = mode;
+  const register = mode === "register";
+  const reset = mode === "reset";
+  $("#field-name").hidden = !register;
+  $("#field-code").hidden = !reset;
+  $("#field-password").hidden = mode === "forgot";
+  $("#gate-password").required = mode !== "forgot";
+  $("#gate-code").required = reset;
+  $("#gate-name").required = register;
+  $("#gate-password").autocomplete = register || reset ? "new-password" : "current-password";
+  $("#gate-title").textContent = register ? "注册" : reset ? "重置密码" : "登录";
+  $("#gate-submit").textContent = register ? "注册并进入" : reset ? "设置新密码" : "登录";
+  $("#gate-forgot").hidden = reset;
+  $("#gate-modes").hidden = mode === "forgot" || reset;
+  document.querySelectorAll("#gate-modes button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.auth === mode);
+  });
+  $("#gate-error").hidden = true;
+}
+
+function listen() {
+  if (state.events) state.events.close();
+  const source = new EventSource("/api/events");
+  source.addEventListener("chat", (event) => {
+    const data = JSON.parse(event.data);
+    const other = state.users.find((item) => item.id === data.otherId);
+    if (state.selectedId === data.otherId) {
+      for (const message of data.messages || []) {
+        if (!state.messages.some((item) => item.id === message.id)) state.messages.push(message);
+      }
+      if (other) other.unread = 0;
+      api(`/api/chat/${data.otherId}/read`, { method: "POST", body: {} }).catch(() => {});
+      renderDock();
+    } else if (other) {
+      other.unread = data.unread || 0;
+    }
+    if (data.edge) upsertEdge(data.edge);
+    renderChrome();
+    draw();
+  });
+  source.addEventListener("presence", (event) => {
+    const data = JSON.parse(event.data);
+    const user = state.users.find((item) => item.id === data.id);
+    if (!user) return;
+    user.online = data.online;
+    draw();
+  });
+  state.events = source;
+}
+
 $("#open-settings").addEventListener("click", openSettings);
 $("#close-settings").addEventListener("click", () => { settings.hidden = true; });
+$("#logout").addEventListener("click", async () => {
+  await api("/api/logout", { method: "POST", body: {} });
+  showGate();
+});
+document.querySelectorAll("#gate-modes button").forEach((button) => {
+  button.addEventListener("click", () => setAuthMode(button.dataset.auth));
+});
+$("#gate-forgot").addEventListener("click", () => {
+  setAuthMode("forgot");
+  $("#gate-submit").textContent = "发送重置码";
+  $("#gate-title").textContent = "忘记密码";
+});
 $("#gate-form").addEventListener("submit", async (event) => {
   event.preventDefault();
-  const data = await api("/api/join", { method: "POST", body: { name: $("#gate-name").value } });
-  state.me = data.me;
-  gate.hidden = true;
-  await refresh();
+  const error = $("#gate-error");
+  error.hidden = true;
+  const email = $("#gate-email").value;
+  const password = $("#gate-password").value;
+  try {
+    if (state.authMode === "forgot") {
+      const data = await api("/api/password/forgot", { method: "POST", body: { email } });
+      $("#gate-note").textContent = data.delivery === "email"
+        ? "如果这个邮箱注册过，重置码已发送。填入重置码和新密码。"
+        : "这台机器还没配置发信。请管理员执行重置命令后，把重置码和新密码填在这里。";
+      setAuthMode("reset");
+      return;
+    }
+    if (state.authMode === "reset") {
+      await api("/api/password/reset", {
+        method: "POST",
+        body: { email, code: $("#gate-code").value, password },
+      });
+      setAuthMode("login");
+      $("#gate-note").textContent = "密码已更新，请登录。";
+      return;
+    }
+    const path = state.authMode === "register" ? "/api/register" : "/api/login";
+    const body = state.authMode === "register"
+      ? { email, password, name: $("#gate-name").value }
+      : { email, password };
+    applySnapshot(await api(path, { method: "POST", body }));
+    gate.hidden = true;
+    listen();
+  } catch (err) {
+    error.hidden = false;
+    error.textContent = err.message;
+  }
 });
 $("#settings-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -580,10 +761,8 @@ $("#settings-form").addEventListener("submit", async (event) => {
         assistMode: form.get("assistMode"),
       },
     });
-    state.me = data.me;
-    const index = state.users.findIndex((user) => user.id === state.me.id);
-    if (index >= 0) state.users[index] = state.me;
-    $("#settings-note").textContent = "已保存。下一次代聊会使用这份画像。";
+    applySnapshot(data);
+    $("#settings-note").textContent = "已保存。背景不会出现在别人的名片上。";
     renderChrome();
     renderDock();
     draw();
@@ -598,11 +777,33 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") settings.hidden = true;
 });
 
+$("#password-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const error = $("#password-error");
+  error.hidden = true;
+  try {
+    await api("/api/password/change", {
+      method: "POST",
+      body: { current: $("#password-current").value, password: $("#password-next").value },
+    });
+    $("#password-current").value = "";
+    $("#password-next").value = "";
+    $("#settings-note").textContent = "密码已更换，其他设备上的登录已退出。";
+  } catch (err) {
+    error.hidden = false;
+    error.textContent = err.message;
+  }
+});
+
 resize();
+setAuthMode("login");
 refresh().then((data) => {
   gate.hidden = Boolean(data.me);
-  if (!data.me) $("#gate-name").focus();
-}).catch((error) => {
-  gate.hidden = false;
-  $("#gate-form").querySelector("p:last-of-type").textContent = error.message;
+  if (data.me) listen();
+  else $("#gate-email").focus();
+}).catch(() => {
+  showGate();
 });
+setInterval(() => {
+  if (state.me) refresh({ quiet: true }).catch(() => {});
+}, 30000);
