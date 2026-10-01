@@ -482,7 +482,10 @@ function renderDock() {
     }
   });
 
-  dockChat.append(profile, thread, composer);
+  const talk = document.createElement("div");
+  talk.className = "dock-talk";
+  talk.append(thread, composer);
+  dockChat.append(profile, talk);
   thread.scrollTop = thread.scrollHeight;
   if (draftFocused) {
     input.focus();

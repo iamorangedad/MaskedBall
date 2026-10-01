@@ -241,6 +241,21 @@ class Modules(unittest.TestCase):
             os.environ.pop("MASKEDBALL_LLM_QUOTA", None)
             model._quota.clear()
 
+    def test_local_model_returns_a_sendable_line(self):
+        status = model.health()
+        self.assertTrue(status["ok"], status)
+        self.assertEqual(status["model"], "qwen3:4b")
+        model.start()
+        speaker = portraits.prompt_context(store.fetch_user("seed-linwan"))
+        counterpart = portraits.prompt_counterpart(store.fetch_user("seed-ahe"))
+        reply = model.submit(speaker, counterpart, [], "问对方今晚灯还亮着吗", quota_user=None)
+        self.assertIsInstance(reply, str)
+        self.assertTrue(reply.strip())
+        self.assertLessEqual(len(reply), 500)
+        self.assertNotIn("<think>", reply)
+        self.assertNotIn("</think>", reply)
+        self.assertFalse(model._looks_like_reasoning(reply), reply)
+
 
 if __name__ == "__main__":
     unittest.main()
