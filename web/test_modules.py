@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 import http.client
 from pathlib import Path
@@ -101,6 +102,46 @@ class Modules(unittest.TestCase):
         status, _data, _cookies = self.request("GET", "/api/space", cookie=token)
         self.assertEqual(status, 401)
 
+    def test_read_body_does_not_stick_to_the_next_send(self):
+        _status, data, cookies = self.request(
+            "POST",
+            "/api/register",
+            {"email": "keep-ada@example.com", "name": "连发甲", "password": "correct-horse"},
+        )
+        token = next(item for item in cookies if item.startswith("mb_session=")).split(";", 1)[0]
+        bo = accounts.register("keep-bo@example.com", "连发乙", "correct-horse")
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        headers = {"Content-Type": "application/json", "Cookie": token}
+        connection.request(
+            "POST",
+            f"/api/chat/{bo['id']}",
+            body=json.dumps({"via": "human", "content": "第一条"}).encode(),
+            headers=headers,
+        )
+        first = connection.getresponse()
+        first.read()
+        self.assertEqual(first.status, 200)
+        connection.request("POST", f"/api/chat/{bo['id']}/read", body=b"{}", headers=headers)
+        read_response = connection.getresponse()
+        read_response.read()
+        self.assertEqual(read_response.status, 200)
+        connection.request(
+            "POST",
+            f"/api/chat/{bo['id']}",
+            body=json.dumps({"via": "human", "content": "第二条"}).encode(),
+            headers=headers,
+        )
+        sent = connection.getresponse()
+        payload = json.loads(sent.read().decode())
+        self.assertEqual(sent.status, 200, payload)
+        self.assertEqual([item["content"] for item in payload["messages"]], ["第一条", "第二条"])
+        connection.request("GET", "/api/space", headers={"Cookie": token})
+        space_response = connection.getresponse()
+        space_response.read()
+        connection.close()
+        self.assertEqual(space_response.status, 200)
+        self.assertEqual(data["me"]["name"], "连发甲")
+
     def test_private_bio_stays_out_of_cards_and_prompts(self):
         ada = accounts.register("bio-ada@example.com", "阿达二", "correct-horse")
         bo = accounts.register("bio-bo@example.com", "阿波", "correct-horse")
@@ -132,6 +173,31 @@ class Modules(unittest.TestCase):
         self.assertTrue(any({item["a"], item["b"]} == {"seed-linwan", "seed-sucheng"} for item in edges))
         with_linwan = conversations.list_messages(ada["id"], "seed-linwan")
         self.assertEqual(with_linwan, [])
+
+        portraits.update(ce["id"], {"assistMode": "llm"})
+        started = threading.Event()
+        release = threading.Event()
+        original = model.submit
+
+        def slow_reply(*_args, **_kwargs):
+            started.set()
+            release.wait(3)
+            return "晚一点再回"
+
+        model.submit = slow_reply
+        try:
+            first = chat.post(ada, ce["id"], "human", "第一句")
+            self.assertTrue(started.wait(2))
+            self.assertEqual([item["content"] for item in first["messages"]], ["第一句"])
+            second = chat.post(ada, ce["id"], "human", "不等回复的第二句")
+            self.assertEqual(
+                [item["content"] for item in second["messages"]],
+                ["第一句", "不等回复的第二句"],
+            )
+        finally:
+            release.set()
+            time.sleep(0.5)
+            model.submit = original
 
         moderation.block(ada["id"], bo["id"])
         denied = _raises(lambda: chat.post(bo, ada["id"], "human", "还想说一句"))

@@ -1,9 +1,18 @@
-"""One send turn: access check, optional generation, save, then notify."""
+"""One send turn: access check, optional generation, save, then notify.
+
+The other person's portrait reply is generated after the send returns, so the
+sender can post again without waiting for that reply.
+"""
 
 from __future__ import annotations
 
+import threading
+
 from maskedball import conversations, moderation, model, notify, portraits, presence, store
 from maskedball.errors import AppError
+
+_reply_locks: dict[str, threading.Lock] = {}
+_reply_guard = threading.Lock()
 
 
 def _message(sender_id: str, content: str, via: str) -> dict:
@@ -63,25 +72,81 @@ def post(viewer: dict, other_id: str, via: str, content: str) -> dict:
     except (RuntimeError, OSError, TimeoutError) as error:
         raise AppError(f"画像代聊没有完成：{error}", 502) from error
 
-    if other["assistMode"] == "llm":
-        try:
-            reply = model.submit(
-                portraits.prompt_context(other),
-                portraits.prompt_counterpart(viewer),
-                history + created,
-                "",
-                quota_user=None,
-            )
-            created.append(_message(other["id"], reply, "llm"))
-        except (AppError, RuntimeError, OSError, TimeoutError) as error:
-            reply_error = f"对方暂时没有接上：{error}"
-
     conversations.append(viewer["id"], other["id"], created)
     conversations.mark_read(viewer["id"], other["id"])
     presence.touch(viewer["id"])
     _notify(viewer["id"], other["id"], created, reply_error)
+    if other["assistMode"] == "llm":
+        _schedule_reply(viewer["id"], other["id"])
     return {
         "messages": conversations.list_messages(viewer["id"], other["id"]),
         "edge": conversations.edge_between(viewer["id"], other["id"]),
         "replyError": reply_error,
     }
+
+
+def _conversation_lock(left_id: str, right_id: str) -> threading.Lock:
+    key = conversations.conversation_id(left_id, right_id)
+    with _reply_guard:
+        lock = _reply_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _reply_locks[key] = lock
+        return lock
+
+
+def _schedule_reply(viewer_id: str, other_id: str) -> None:
+    threading.Thread(
+        target=_reply_later,
+        args=(viewer_id, other_id),
+        name="maskedball-reply",
+        daemon=True,
+    ).start()
+
+
+def _reply_later(viewer_id: str, other_id: str) -> None:
+    """Answer the latest messages. A burst sent during generation gets another pass."""
+    with _conversation_lock(viewer_id, other_id):
+        answered: set[str] = set()
+        first = True
+        while True:
+            viewer = store.fetch_user(viewer_id)
+            other = store.fetch_user(other_id)
+            if viewer is None or other is None or other["assistMode"] != "llm":
+                return
+            if moderation.is_blocked(viewer_id, other_id):
+                return
+            history = conversations.list_messages(viewer_id, other_id)
+            if first:
+                if not history or history[-1]["senderId"] != viewer_id:
+                    return
+                last_other = max(
+                    (index for index, item in enumerate(history) if item["senderId"] != viewer_id),
+                    default=-1,
+                )
+                answered.update(
+                    item["id"] for item in history[: last_other + 1] if item["senderId"] == viewer_id
+                )
+                first = False
+            pending = [item for item in history if item["senderId"] == viewer_id and item["id"] not in answered]
+            if not pending:
+                return
+            seen = {item["id"] for item in history}
+            try:
+                reply = model.submit(
+                    portraits.prompt_context(other),
+                    portraits.prompt_counterpart(viewer),
+                    history,
+                    "",
+                    quota_user=None,
+                )
+            except (AppError, RuntimeError, OSError, TimeoutError) as error:
+                _notify(viewer_id, other_id, [], f"对方暂时没有接上：{error}")
+                return
+            created = [_message(other_id, reply, "llm")]
+            conversations.append(viewer_id, other_id, created)
+            _notify(viewer_id, other_id, created, None)
+            answered.update(item["id"] for item in history if item["senderId"] == viewer_id)
+            latest = conversations.list_messages(viewer_id, other_id)
+            if not any(item["senderId"] == viewer_id and item["id"] not in seen for item in latest):
+                return

@@ -308,6 +308,13 @@ function renderDock() {
   }
   dockEmpty.hidden = true;
   dockChat.hidden = false;
+  const sameChat = dockChat.dataset.person === user.id;
+  const previousInput = sameChat ? dockChat.querySelector(".composer-row input") : null;
+  const draftValue = previousInput ? previousInput.value : "";
+  const draftStart = previousInput ? previousInput.selectionStart : null;
+  const draftEnd = previousInput ? previousInput.selectionEnd : null;
+  const draftFocused = Boolean(previousInput && document.activeElement === previousInput);
+  dockChat.dataset.person = user.id;
   dockChat.replaceChildren();
 
   const profile = document.createElement("div");
@@ -371,22 +378,20 @@ function renderDock() {
   }
   for (const message of state.messages) {
     const mine = state.me && message.senderId === state.me.id;
+    const pending = String(message.id).startsWith("pending-");
     const bubble = document.createElement("div");
     bubble.className = mine ? "bubble mine" : "bubble";
+    if (pending) bubble.classList.add("pending");
     const text = document.createElement("p");
     text.textContent = message.content;
     const note = document.createElement("small");
     const speaker = state.users.find((item) => item.id === message.senderId);
     const how = message.via === "llm" ? "画像代发" : "亲手";
-    note.textContent = `${speaker ? speaker.name : ""} · ${how}`;
+    if (pending) note.textContent = "正在发送";
+    else if (mine) note.textContent = `${speaker ? speaker.name : ""} · ${how} · 已发送`;
+    else note.textContent = `${speaker ? speaker.name : ""} · ${how}`;
     bubble.append(text, note);
     thread.append(bubble);
-  }
-  if (state.sending) {
-    const waiting = document.createElement("p");
-    waiting.className = "empty-thread";
-    waiting.textContent = "本地模型正在按画像组织语言，通常要十几秒。";
-    thread.append(waiting);
   }
 
   const composer = document.createElement("form");
@@ -411,26 +416,39 @@ function renderDock() {
   const input = document.createElement("input");
   input.maxLength = 800;
   input.placeholder = mode === "llm" ? "可选：给画像一个意图，留空就让它自己接话" : "亲手写一句";
-  input.required = mode === "human";
+  input.required = mode === "human" && !state.sending;
+  input.disabled = state.sending;
   const send = document.createElement("button");
   send.type = "submit";
-  send.textContent = mode === "llm" ? "代为发送" : "发送";
+  send.textContent = state.sending ? "发送中" : mode === "llm" ? "代为发送" : "发送";
   send.disabled = state.sending;
   row.append(input, send);
+  input.value = draftValue;
   const error = document.createElement("p");
   error.className = "form-error";
   error.hidden = !state.notice;
   error.textContent = state.notice;
   composer.append(modes, row, error);
+  if (state.sending) {
+    const status = document.createElement("p");
+    status.className = "send-status";
+    status.textContent = state.me.assistMode === "llm"
+      ? "正在发送。画像组织这句话通常要十几秒，发出后才能写下一条。"
+      : "正在发送，发出后才能写下一条。";
+    composer.append(status);
+  }
   composer.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (state.sending) return;
     const draft = input.value;
+    const pendingId = `pending-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const pending = {
-      id: "pending",
+      id: pendingId,
       senderId: state.me.id,
-      content: state.me.assistMode === "llm" && !draft ? "正在按画像组织这句话。" : draft,
+      content: state.me.assistMode === "llm" && !draft.trim() ? "正在按画像组织这句话。" : draft,
       via: state.me.assistMode,
     };
+    input.value = "";
     state.notice = "";
     state.sending = true;
     state.messages = state.messages.concat(pending);
@@ -440,23 +458,36 @@ function renderDock() {
         method: "POST",
         body: { via: state.me.assistMode, content: draft },
       });
-      state.messages = data.messages;
+      const stillPending = state.messages.filter(
+        (item) => String(item.id).startsWith("pending-") && item.id !== pendingId,
+      );
+      state.messages = data.messages.concat(stillPending);
       upsertEdge(data.edge);
-      state.notice = data.replyError || "";
+      if (data.replyError) state.notice = data.replyError;
     } catch (err) {
-      state.messages = state.messages.filter((item) => item.id !== "pending");
+      state.messages = state.messages.filter((item) => item.id !== pendingId);
       state.notice = err.message;
     } finally {
-      state.sending = false;
-      renderDock();
-      const scroller = dockChat.querySelector(".thread");
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
+      state.sending = state.messages.some((item) => String(item.id).startsWith("pending-"));
+      if (state.selectedId === user.id) {
+        renderDock();
+        const scroller = dockChat.querySelector(".thread");
+        if (scroller) scroller.scrollTop = scroller.scrollHeight;
+        if (!state.sending) {
+          const next = dockChat.querySelector(".composer-row input");
+          if (next) next.focus();
+        }
+      }
       wake();
     }
   });
 
   dockChat.append(profile, thread, composer);
   thread.scrollTop = thread.scrollHeight;
+  if (draftFocused) {
+    input.focus();
+    if (draftStart != null && draftEnd != null) input.setSelectionRange(draftStart, draftEnd);
+  }
 }
 
 function upsertEdge(edge) {
@@ -671,9 +702,16 @@ function listen() {
     const other = state.users.find((item) => item.id === data.otherId);
     if (state.selectedId === data.otherId) {
       for (const message of data.messages || []) {
+        if (state.me && message.senderId === state.me.id) {
+          const pendingIndex = state.messages.findIndex(
+            (item) => String(item.id).startsWith("pending-") && item.content === message.content,
+          );
+          if (pendingIndex >= 0) state.messages.splice(pendingIndex, 1);
+        }
         if (!state.messages.some((item) => item.id === message.id)) state.messages.push(message);
       }
       if (other) other.unread = 0;
+      if (data.replyError) state.notice = data.replyError;
       api(`/api/chat/${data.otherId}/read`, { method: "POST", body: {} }).catch(() => {});
       renderDock();
     } else if (other) {

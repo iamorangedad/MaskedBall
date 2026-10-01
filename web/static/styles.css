@@ -102,7 +102,15 @@ button[type="submit"] { background: var(--gold); color: #24190d; border-color: t
   flex-direction: column;
   overflow: hidden;
 }
+.dock-chat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 .dock-empty, .profile { padding: 22px 22px 8px; }
+.profile { flex: 0 1 auto; min-height: 0; max-height: 38%; overflow: auto; }
 .dock-empty p:last-child, .sheet-lead { color: var(--muted); }
 .eyebrow {
   margin: 0 0 6px;
@@ -131,22 +139,32 @@ button[type="submit"] { background: var(--gold); color: #24190d; border-color: t
 .greeting { margin: 0; color: var(--text); font-family: var(--serif); }
 
 .thread {
-  flex: 1;
-  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: scroll;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(224, 193, 122, 0.7) rgba(255, 255, 255, 0.06);
   padding: 8px 18px 12px;
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
+.thread::-webkit-scrollbar { width: 8px; }
+.thread::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.06); }
+.thread::-webkit-scrollbar-thumb { background: rgba(224, 193, 122, 0.7); border-radius: 999px; }
 .bubble { max-width: 88%; }
 .bubble p { margin: 0; padding: 10px 12px; border-radius: 16px; background: rgba(255,255,255,0.04); }
 .bubble.mine { align-self: flex-end; }
 .bubble.mine p { background: rgba(224, 193, 122, 0.16); }
 .bubble small { display: block; margin-top: 4px; color: var(--muted); font-size: 0.72rem; }
 .bubble.mine small { text-align: right; }
+.bubble.pending { opacity: 0.72; }
+.bubble.pending small { color: #e0c17a; }
+.send-status { margin: 0; color: #e0c17a; font-size: 0.82rem; }
 .empty-thread { color: var(--muted); margin: 12px 4px; }
 
 .composer {
+  flex: 0 0 auto;
   border-top: 1px solid var(--line);
   padding: 12px;
   display: grid;

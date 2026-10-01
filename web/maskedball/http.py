@@ -49,16 +49,36 @@ class Handler(BaseHTTPRequestHandler):
     def read_json(self) -> dict:
         length = int(self.headers.get("Content-Length", "0") or 0)
         if length > 100_000:
+            self.close_connection = True
+            self._body_read = True
             raise AppError("请求太大")
+        raw = self.rfile.read(length) if length else b""
+        self._body_read = True
         if length == 0:
             return {}
         try:
-            data = json.loads(self.rfile.read(length).decode())
+            data = json.loads(raw.decode())
         except json.JSONDecodeError as error:
             raise AppError("请求格式不对") from error
         if not isinstance(data, dict):
             raise AppError("请求格式不对")
         return data
+
+    def _drain_body(self) -> None:
+        """Keep-alive leaves unread bytes in front of the next request."""
+        if getattr(self, "_body_read", False):
+            return
+        length = int(self.headers.get("Content-Length", "0") or 0)
+        self._body_read = True
+        if length > 1_000_000:
+            self.close_connection = True
+            return
+        remaining = length
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 65536))
+            if not chunk:
+                break
+            remaining -= len(chunk)
 
     def token(self) -> str | None:
         jar = SimpleCookie(self.headers.get("Cookie", ""))
@@ -98,6 +118,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": str(error)}, error.status)
 
     def do_POST(self) -> None:
+        # The same handler serves every request on a keep-alive connection.
+        self._body_read = False
         path = urlparse(self.path).path
         try:
             if path == "/api/register":
@@ -134,8 +156,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "没有这个接口"}, 404)
         except AppError as error:
             self.send_json({"error": str(error)}, error.status)
+        finally:
+            self._drain_body()
 
     def do_PUT(self) -> None:
+        self._body_read = False
         try:
             if urlparse(self.path).path == "/api/me":
                 user = self.viewer()
@@ -145,8 +170,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "没有这个接口"}, 404)
         except AppError as error:
             self.send_json({"error": str(error)}, error.status)
+        finally:
+            self._drain_body()
 
     def do_DELETE(self) -> None:
+        self._body_read = False
         path = urlparse(self.path).path
         try:
             if path.startswith("/api/blocks/"):
@@ -157,6 +185,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": "没有这个接口"}, 404)
         except AppError as error:
             self.send_json({"error": str(error)}, error.status)
+        finally:
+            self._drain_body()
 
     def handle_register(self) -> None:
         body = self.read_json()
