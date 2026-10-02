@@ -330,7 +330,7 @@ function renderDock() {
   const meta = document.createElement("p");
   meta.className = "meta";
   const presenceText = user.online ? "在线" : "离开";
-  meta.textContent = `${user.personalityLabel} · ${user.styleLabel.split("，")[0]} · ${user.assistMode === "llm" ? "画像会代为回复" : "等待亲手回复"} · ${presenceText}`;
+  meta.textContent = `${user.personalityLabel} · ${user.styleLabel.split("，")[0]} · ${user.assistMode === "llm" ? "画像会持续代聊" : "等待亲手回复"} · ${presenceText}`;
   title.append(name, meta);
   top.append(avatar, title);
   const keywords = document.createElement("div");
@@ -429,12 +429,16 @@ function renderDock() {
   error.hidden = !state.notice;
   error.textContent = state.notice;
   composer.append(modes, row, error);
-  if (state.sending) {
+  if (mode === "llm" || state.sending) {
     const status = document.createElement("p");
     status.className = "send-status";
-    status.textContent = state.me.assistMode === "llm"
-      ? "正在发送。画像组织这句话通常要十几秒，发出后才能写下一条。"
-      : "正在发送，发出后才能写下一条。";
+    if (state.sending && mode === "llm") {
+      status.textContent = "正在按画像发送这一句。之后会继续替你聊，直到切回亲手回复。";
+    } else if (state.sending) {
+      status.textContent = "正在发送，发出后才能写下一条。";
+    } else {
+      status.textContent = "画像会持续替你发送和回复，直到切回亲手回复。";
+    }
     composer.append(status);
   }
   composer.addEventListener("submit", async (event) => {
@@ -493,6 +497,18 @@ function renderDock() {
   }
 }
 
+async function continueChat(otherId) {
+  if (!state.me || state.me.assistMode !== "llm" || !otherId || otherId === state.me.id) return;
+  try {
+    await api(`/api/chat/${otherId}/continue`, { method: "POST", body: {} });
+  } catch (err) {
+    if (state.selectedId === otherId) {
+      state.notice = err.message;
+      renderDock();
+    }
+  }
+}
+
 function upsertEdge(edge) {
   if (!edge) return;
   const index = state.edges.findIndex((item) =>
@@ -510,6 +526,7 @@ async function setMode(assistMode) {
   if (index >= 0) state.users[index] = state.me;
   renderDock();
   draw();
+  if (assistMode === "llm") continueChat(state.selectedId);
 }
 
 async function openChat(user) {
@@ -527,6 +544,7 @@ async function openChat(user) {
     user.unread = 0;
     renderChrome();
     renderDock();
+    if (state.me.assistMode === "llm") continueChat(user.id);
   } catch (err) {
     state.notice = err.message;
     renderDock();
@@ -807,6 +825,7 @@ $("#settings-form").addEventListener("submit", async (event) => {
     renderChrome();
     renderDock();
     draw();
+    if (data.me.assistMode === "llm") continueChat(state.selectedId);
   } catch (err) {
     error.hidden = false;
     error.textContent = err.message;

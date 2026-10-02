@@ -256,6 +256,41 @@ class Modules(unittest.TestCase):
         self.assertNotIn("</think>", reply)
         self.assertFalse(model._looks_like_reasoning(reply), reply)
 
+    def test_llm_mode_keeps_talking_until_switched_to_human(self):
+        ada = accounts.register("loop-ada@example.com", "连聊甲", "correct-horse")
+        bo = accounts.register("loop-bo@example.com", "连聊乙", "correct-horse")
+        portraits.update(ada["id"], {"assistMode": "llm"})
+        portraits.update(bo["id"], {"assistMode": "llm"})
+        ada = store.fetch_user(ada["id"])
+        calls = []
+        original = model.submit
+
+        def fake_submit(speaker, counterpart, history, hint, quota_user=None):
+            calls.append(speaker["id"])
+            if len(calls) >= 4:
+                portraits.update(ada["id"], {"assistMode": "human"})
+            return f"代聊{len(calls)}"
+
+        model.submit = fake_submit
+        try:
+            first = chat.post(ada, bo["id"], "llm", "先打个招呼")
+            self.assertEqual(first["messages"][0]["senderId"], ada["id"])
+            for _ in range(50):
+                if len(calls) >= 4:
+                    break
+                time.sleep(0.05)
+            self.assertGreaterEqual(len(calls), 4)
+            time.sleep(0.4)
+            self.assertEqual(len(calls), 4)
+            messages = conversations.list_messages(ada["id"], bo["id"])
+            self.assertGreaterEqual(len(messages), 4)
+            self.assertEqual({item["senderId"] for item in messages}, {ada["id"], bo["id"]})
+        finally:
+            portraits.update(ada["id"], {"assistMode": "human"})
+            portraits.update(bo["id"], {"assistMode": "human"})
+            time.sleep(0.2)
+            model.submit = original
+
 
 if __name__ == "__main__":
     unittest.main()

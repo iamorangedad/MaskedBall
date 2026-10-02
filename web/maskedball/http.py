@@ -150,6 +150,10 @@ class Handler(BaseHTTPRequestHandler):
                 other_id = unquote(path[len("/api/chat/") : -len("/read")])
                 self.handle_read(other_id)
                 return
+            if path.startswith("/api/chat/") and path.endswith("/continue"):
+                other_id = unquote(path[len("/api/chat/") : -len("/continue")])
+                self.handle_continue(other_id)
+                return
             if path.startswith("/api/chat/"):
                 self.handle_post_chat(unquote(path[len("/api/chat/") :]))
                 return
@@ -266,6 +270,11 @@ class Handler(BaseHTTPRequestHandler):
         user = self.viewer()
         conversations.mark_read(user["id"], other_id)
         self.send_json({"ok": True, "edge": conversations.edge_between(user["id"], other_id)})
+
+    def handle_continue(self, other_id: str) -> None:
+        user = self.viewer()
+        self.read_json()
+        self.send_json(chat.resume(user, other_id))
 
     def handle_post_chat(self, other_id: str) -> None:
         user = self.viewer()
